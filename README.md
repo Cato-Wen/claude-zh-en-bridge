@@ -2,7 +2,7 @@
 
 A Claude Code mod for people who prefer to work in Chinese while Claude works in English:
 
-- **Your prompts go to Claude in English.** A prompt that contains Chinese is translated to English before it is sent. The transcript still shows your prompt in Chinese, as you typed it.
+- **Your prompts go to Claude in English.** A prompt that contains Chinese is translated to English before it is sent. The transcript still shows your prompt in Chinese, as you typed it. Chinese arguments of a slash command (a skill such as `/eli5 ...`, your own commands, plugin commands, MCP prompts) are translated too; Claude Code's built-in commands (`/model`, `/rename`, `/add-dir`, ...) keep their arguments as typed.
 - **Claude's replies are shown in Chinese.** English reply text is translated and drawn in Chinese. Only the display changes; the conversation Claude reads stays in English.
 - **Question dialogs are shown in Chinese**, and your answers go back to Claude in English (picked options under their original labels, typed text translated).
 

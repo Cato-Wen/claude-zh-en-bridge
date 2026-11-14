@@ -14,6 +14,8 @@ const translating = atom({ plugin: 'zh-en-bridge', key: 'translating' } as const
 // Translated prompts: English sent to the model -> the Chinese the person typed,
 // so the transcript row keeps showing what they wrote.
 const prompts = atom({ plugin: 'zh-en-bridge', key: 'prompts' } as const, {} as Record<string, string>)
+// The same for slash command arguments, which sit inside a longer command row.
+const commandArgs = atom({ plugin: 'zh-en-bridge', key: 'commandArgs' } as const, {} as Record<string, string>)
 
 const MARK = '⇄ 翻译中…'
 const PROMPT_MARK = '译…'
@@ -265,10 +267,37 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // 1b. Slash command arguments (skills, user, plugin and MCP commands) go in
+  // English too. Built-ins keep theirs as typed: their arguments are names,
+  // paths and settings, not text for the model.
+  on('command.run', async ($, e, next) => {
+    if (!hasChinese(e.args)) return next(e)
+    const info = (await $.command.list()).find(c => c.name === e.command)
+    if (!info || info.source === 'builtin') return next(e)
+
+    $.ui.status(PROMPT_MARK)
+    const english = await gemini($, TO_EN, e.args)
+    if (!english) {
+      $.ui.toast('zh-en-bridge: translation failed, ran the command as typed')
+      return next(e)
+    }
+    $.ui.status(undefined)
+    await update($, commandArgs, all => ({ ...all, [english]: e.args }))
+    return next({ ...e, args: english })
+  }).catch(($, e, next) => next(e))
+
   // The prompt row shows the Chinese as typed; the stored message stays English.
+  // A command row holds its translated arguments inside the line, so those are
+  // swapped back in place.
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
-    const zh = (await read($, prompts))[e.props.text]
-    return next(zh ? { ...e, props: { ...e.props, text: zh } } : e)
+    let text = (await read($, prompts))[e.props.text]
+    if (!text) {
+      text = e.props.text
+      for (const [en, zh] of Object.entries(await read($, commandArgs))) {
+        if (text.includes(en)) text = text.split(en).join(zh)
+      }
+    }
+    return next(text !== e.props.text ? { ...e, props: { ...e.props, text } } : e)
   }).catch(($, e, next) => next(e))
 
   // 2. Incoming: an English reply block is drawn in Chinese. Only the drawing

@@ -6,6 +6,7 @@ declare module 'claude-code' {
       replies: Record<string, Translation>
       translating: Record<string, string>
       prompts: Record<string, string>
+      commandArgs: Record<string, string>
     }
   }
 }

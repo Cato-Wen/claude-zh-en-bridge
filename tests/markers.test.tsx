@@ -10,7 +10,7 @@ const MESSAGE = {
 } as const
 
 // Seeds what the mod keeps in $.state: the stand-in engine answers each read.
-function seed(on: any, values: { replies?: object; translating?: object; prompts?: object }) {
+function seed(on: any, values: { replies?: object; translating?: object; prompts?: object; commandArgs?: object }) {
   on('state.get', (_: unknown, e: { key: string }) => ({
     value: { value: (values as any)[e.key], version: 1 },
   }))
@@ -48,6 +48,26 @@ for (const surface of ['terminal', 'desktop'] as const) {
       props: { text: en, origin: { kind: 'user' }, isExpanded: true },
     } as any)
     expect(drawnText).toBe(zh)
+    await ui.unmount()
+  })
+
+  test(`${surface}: a command row shows its translated arguments in Chinese`, async ($, on) => {
+    const en = 'Help me understand these three playwright agents again'
+    const zh = '帮我再了解下 playwright 这三个 agent'
+    seed(on, { commandArgs: { [en]: zh } })
+    let drawnText: string | undefined
+    on('ui.render', (_: unknown, e: any) => {
+      drawnText = e.props.text
+      return { type: 'Text', props: {}, children: [e.props.text] }
+    })
+    const ui = await $.ui.mount({
+      plugin: 'zh-en-bridge',
+      component: 'UserMessage',
+      requestId: 'u2',
+      surface,
+      props: { text: `/eli5 ${en}`, origin: { kind: 'user' }, isExpanded: true },
+    } as any)
+    expect(drawnText).toBe(`/eli5 ${zh}`)
     await ui.unmount()
   })
 }
