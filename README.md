@@ -6,7 +6,7 @@ A Claude Code mod for people who prefer to work in Chinese while Claude works in
 - **Claude's replies are shown in Chinese.** English reply text is translated and drawn in Chinese. Only the display changes; the conversation Claude reads stays in English.
 - **Question dialogs are shown in Chinese**, and your answers go back to Claude in English (picked options under their original labels, typed text translated).
 
-Translation uses Gemini on Google Vertex AI, not a Claude model. Tool-call rows and tool output are not translated. A reply first appears in English and switches to Chinese once its translation arrives (a few seconds).
+Translation uses Gemini on Google Vertex AI, not a Claude model. Tool-call rows and tool output are not translated. A reply first appears in English and switches to Chinese once its translation arrives (a few seconds). While that runs, a dim `⇄ 翻译中…` line shows under the reply (above a question dialog), and the status line shows `译…` while your prompt is being translated.
 
 ## Prerequisites
 

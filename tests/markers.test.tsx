@@ -1,0 +1,33 @@
+import { expect, test } from 'claude-code/testing'
+
+const TEXT = 'The build passed and all tests are green, so the change is ready to merge.'
+
+const MESSAGE = {
+  plugin: 'zh-en-bridge',
+  component: 'AssistantMessage',
+  requestId: 'm1',
+  props: { text: TEXT, isFirstOfReply: true },
+} as const
+
+// Seeds what the mod keeps in $.state: the stand-in engine answers each read.
+function seed(on: any, values: { replies?: object; translating?: object }) {
+  on('state.get', (_: unknown, e: { key: string }) => ({
+    value: { value: (values as any)[e.key], version: 1 },
+  }))
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`${surface}: a reply being translated shows the marker under the English`, async ($, on) => {
+    seed(on, { translating: { m1: TEXT } })
+    const ui = await $.ui.mount({ ...MESSAGE, surface })
+    expect((await ui.find({ type: 'Text', text: /⇄ 翻译中…/ }))?.text).toBe('⇄ 翻译中…')
+    await ui.unmount()
+  })
+
+  test(`${surface}: a translated reply shows no marker`, async ($, on) => {
+    seed(on, { replies: { m1: { src: TEXT, zh: '构建通过，测试全绿。' } } })
+    const ui = await $.ui.mount({ ...MESSAGE, surface })
+    expect(await ui.find({ type: 'Text', text: /⇄/ })).toBeUndefined()
+    await ui.unmount()
+  })
+}

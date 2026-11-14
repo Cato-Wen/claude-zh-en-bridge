@@ -7,6 +7,13 @@ import type { Translation } from '../types'
 // hot reload does not lose them and a write redraws the message.
 const replies = atom({ plugin: 'zh-en-bridge', key: 'replies' } as const, {} as Record<string, Translation>)
 
+// What is being translated right now: message id -> the text sent. Drawn as a
+// dim marker under that message until its translation lands.
+const translating = atom({ plugin: 'zh-en-bridge', key: 'translating' } as const, {} as Record<string, string>)
+
+const MARK = '⇄ 翻译中…'
+const PROMPT_MARK = '译…'
+
 const DEFAULT_MODEL = 'gemini-3.8-flash'
 const SETTLE_MS = 800 // wait for a streaming block to stop changing
 
@@ -211,6 +218,25 @@ async function gemini($: EngineInterface, system: string, text: string, json = f
   }
 }
 
+// Runs one translation for message `id` with its marker shown, then stores the
+// result. A failure stores the original, so the marker goes and the English stays
+// without retrying on every redraw.
+async function translateInto(
+  $: EngineInterface,
+  id: string,
+  src: string,
+  run: () => Promise<string | undefined>,
+) {
+  await update($, translating, all => ({ ...all, [id]: src }))
+  let out: string | undefined
+  try {
+    out = await run()
+  } finally {
+    await update($, replies, all => ({ ...all, [id]: { src, zh: out ?? src } }))
+    await update($, translating, ({ [id]: _, ...rest }) => rest)
+  }
+}
+
 export const register: Register = on => {
   // Latest text seen per message, and the text being translated per message,
   // so a streaming block is translated once it settles, not on every chunk.
@@ -221,7 +247,9 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (e.command || e.isMeta || !hasChinese(e.text)) return next(e)
 
+    $.ui.status(PROMPT_MARK)
     const english = await gemini($, TO_EN, e.text)
+    if (english) $.ui.status(undefined)
     if (!english) {
       $.ui.toast('zh-en-bridge: translation failed, sent the prompt as typed')
       return next(e)
@@ -249,16 +277,23 @@ export const register: Register = on => {
       $.clock.after(SETTLE_MS, () => {
         if (latest.get(id) !== text || inFlight.get(id) === text) return
         inFlight.set(id, text)
-        void gemini($, TO_ZH, text).then(async zh => {
+        void translateInto($, id, text, () => gemini($, TO_ZH, text)).finally(() => {
           if (inFlight.get(id) === text) inFlight.delete(id)
-          if (!zh || latest.get(id) !== text) return
-          await update($, replies, all => ({ ...all, [id]: { src: text, zh } }))
         })
       })
     }
 
-    // Until the translation lands, show the English as it is.
-    return next(e)
+    // Until the translation lands, show the English as it is, with the marker
+    // once the request is out (not while the reply is still streaming).
+    const english = await next(e)
+    if ((await read($, translating))[id] !== text) return english
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {english}
+        <Text dimColor>{MARK}</Text>
+      </Box>
+    )
   }).catch(($, e, next) => next(e))
 
   // 3. Question dialogs (AskUserQuestion) are drawn in Chinese too.
@@ -270,6 +305,7 @@ export const register: Register = on => {
     const id = `ask:${e.requestId}`
     const done = (await read($, replies))[id]
     if (done && done.src === src) {
+      if (done.zh === src) return next(e) // translation failed: keep the English
       const zh = JSON.parse(done.zh) as Question[]
       remember(questions, zh)
       return next({ ...e, props: { ...e.props, questions: zh } })
@@ -277,17 +313,26 @@ export const register: Register = on => {
 
     if (inFlight.get(id) !== src) {
       inFlight.set(id, src)
-      void gemini($, QUESTIONS_TO_ZH, src, true).then(async out => {
-        inFlight.delete(id)
-        if (!out) return
+      void translateInto($, id, src, async () => {
+        const out = await gemini($, QUESTIONS_TO_ZH, src, true)
+        if (!out) return undefined
         let zh: unknown
-        try { zh = JSON.parse(out) } catch { return }
-        if (!sameShape(questions, zh)) return
-        remember(questions, zh)
-        await update($, replies, all => ({ ...all, [id]: { src, zh: JSON.stringify(zh) } }))
-      })
+        try { zh = JSON.parse(out) } catch { return undefined }
+        if (!sameShape(questions, zh)) return undefined
+        return JSON.stringify(zh)
+      }).finally(() => inFlight.delete(id))
     }
-    return next(e)
+
+    // The dialog allows nothing below it, so the marker goes above.
+    const dialog = await next(e)
+    if ((await read($, translating))[id] !== src) return dialog
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{MARK}</Text>
+        {dialog}
+      </Box>
+    )
   }).catch(($, e, next) => next(e))
 
   // 4. The answers go back to Claude in English: picked options under their
