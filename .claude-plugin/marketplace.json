@@ -1,0 +1,5 @@
+{
+  "name": "claude-zh-en-bridge",
+  "owner": { "name": "Cato-Wen" },
+  "plugins": [{ "name": "zh-en-bridge", "source": "./" }]
+}
