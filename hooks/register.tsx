@@ -11,6 +11,10 @@ const replies = atom({ plugin: 'zh-en-bridge', key: 'replies' } as const, {} as 
 // dim marker under that message until its translation lands.
 const translating = atom({ plugin: 'zh-en-bridge', key: 'translating' } as const, {} as Record<string, string>)
 
+// Translated prompts: English sent to the model -> the Chinese the person typed,
+// so the transcript row keeps showing what they wrote.
+const prompts = atom({ plugin: 'zh-en-bridge', key: 'prompts' } as const, {} as Record<string, string>)
+
 const MARK = '⇄ 翻译中…'
 const PROMPT_MARK = '译…'
 
@@ -254,11 +258,18 @@ export const register: Register = on => {
       $.ui.toast('zh-en-bridge: translation failed, sent the prompt as typed')
       return next(e)
     }
+    await update($, prompts, all => ({ ...all, [english]: e.text }))
     return next({ ...e, text: english })
   }).catch(($, e, next) => {
     $.ui.toast('zh-en-bridge: translation failed, sent the prompt as typed')
     return next(e)
   })
+
+  // The prompt row shows the Chinese as typed; the stored message stays English.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const zh = (await read($, prompts))[e.props.text]
+    return next(zh ? { ...e, props: { ...e.props, text: zh } } : e)
+  }).catch(($, e, next) => next(e))
 
   // 2. Incoming: an English reply block is drawn in Chinese. Only the drawing
   // changes; the stored message (what the model reads back) stays English.

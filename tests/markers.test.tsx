@@ -10,7 +10,7 @@ const MESSAGE = {
 } as const
 
 // Seeds what the mod keeps in $.state: the stand-in engine answers each read.
-function seed(on: any, values: { replies?: object; translating?: object }) {
+function seed(on: any, values: { replies?: object; translating?: object; prompts?: object }) {
   on('state.get', (_: unknown, e: { key: string }) => ({
     value: { value: (values as any)[e.key], version: 1 },
   }))
@@ -28,6 +28,26 @@ for (const surface of ['terminal', 'desktop'] as const) {
     seed(on, { replies: { m1: { src: TEXT, zh: '构建通过，测试全绿。' } } })
     const ui = await $.ui.mount({ ...MESSAGE, surface })
     expect(await ui.find({ type: 'Text', text: /⇄/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test(`${surface}: a translated prompt is drawn as typed in Chinese`, async ($, on) => {
+    const en = 'Does Playwright already implement these agents?'
+    const zh = 'Playwright 不是已经有这些 agent 的实现了吗？'
+    seed(on, { prompts: { [en]: zh } })
+    let drawnText: string | undefined
+    on('ui.render', (_: unknown, e: any) => {
+      drawnText = e.props.text
+      return { type: 'Text', props: {}, children: [e.props.text] }
+    })
+    const ui = await $.ui.mount({
+      plugin: 'zh-en-bridge',
+      component: 'UserMessage',
+      requestId: 'u1',
+      surface,
+      props: { text: en, origin: { kind: 'user' }, isExpanded: true },
+    } as any)
+    expect(drawnText).toBe(zh)
     await ui.unmount()
   })
 }
